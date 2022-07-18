@@ -8,17 +8,25 @@
 import Foundation
 import EventKit
 
-var eventStore : EKEventStore?
 
 @main
 struct AsyncGetReminders {
+    let eventStore : EKEventStore
+    let predicate : NSPredicate
     
-    static func loadReminders() async {
-        eventStore = EKEventStore()
-        guard let eventStore else {
-            print("# ERROR: eventStore is nil!")
-            return
+    func loadReminders(_ predicate: NSPredicate) async -> [EKReminder] {
+        var reminders : [EKReminder] = []
+        eventStore.fetchReminders(matching: predicate) { foundReminders in
+            if let foundReminders {
+                reminders = foundReminders.filter { !$0.isCompleted }
+            }
         }
+        Thread.sleep(forTimeInterval: 0.08)
+        return reminders
+     }
+    
+    init() {
+        eventStore = EKEventStore()
         eventStore.requestAccess(to: EKEntityType.reminder, completion: {
             (granted, error) in
             if (!granted) || (error != nil) {
@@ -26,27 +34,20 @@ struct AsyncGetReminders {
                 exit(EXIT_FAILURE)
             }
         })
-        let cal = eventStore.defaultCalendarForNewReminders()
-        guard let cal else {
-            print("# ERROR: Couldn't get defaultCalendarForNewReminders()")
-            return
-        }
         
-        let predicate = eventStore.predicateForReminders(in: [cal])
-        eventStore.fetchReminders(matching: predicate) { foundReminders in
-            guard let foundReminders else { return }
-            for reminder in foundReminders {
-                // only load reminders that are not completed or were completed today
-                guard !reminder.isCompleted else { continue }
-                if let title = reminder.title {
-                    print("\(title)")
-                }
-            }
+        guard let cal = eventStore.defaultCalendarForNewReminders() else {
+            fatalError("# ERROR: Couldn't get defaultCalendarForNewReminders()")
         }
-        Thread.sleep(forTimeInterval: 0.08)
+        predicate = eventStore.predicateForReminders(in: [cal])
     }
-    
-    static func main() async throws {
-        await loadReminders()
+        
+    func main() async throws {
+        let reminders = await loadReminders(predicate)
+        for reminder in reminders {
+            print("\(reminder.title ?? "Unknown")")
+        }
     }
+
+    static func main() async { try? await AsyncGetReminders().main() }
 }
+
