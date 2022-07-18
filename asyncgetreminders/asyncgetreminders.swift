@@ -12,9 +12,14 @@ import EventKit
 @main
 struct AsyncGetReminders {
     let eventStore : EKEventStore
-    let predicate : NSPredicate
-    
+        
     func loadReminders(completion: @escaping ([EKReminder]) -> Void) {
+        guard let cal = eventStore.defaultCalendarForNewReminders() else {
+            completion([])
+            return
+        }
+        let predicate = eventStore.predicateForReminders(in: [cal])
+        
         eventStore.fetchReminders(matching: predicate) { foundReminders in
             if let foundReminders {
                 completion(foundReminders.filter { !$0.isCompleted })
@@ -42,10 +47,6 @@ struct AsyncGetReminders {
             }
         })
         
-        guard let cal = eventStore.defaultCalendarForNewReminders() else {
-            fatalError("# ERROR: Couldn't get defaultCalendarForNewReminders()")
-        }
-        predicate = eventStore.predicateForReminders(in: [cal])
     }
         
     func main() async throws {
