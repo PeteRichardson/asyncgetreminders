@@ -14,16 +14,23 @@ struct AsyncGetReminders {
     let eventStore : EKEventStore
     let predicate : NSPredicate
     
-    func loadReminders(_ predicate: NSPredicate) async -> [EKReminder] {
-        var reminders : [EKReminder] = []
+    func loadReminders(completion: @escaping ([EKReminder]) -> Void) {
         eventStore.fetchReminders(matching: predicate) { foundReminders in
             if let foundReminders {
-                reminders = foundReminders.filter { !$0.isCompleted }
+                completion(foundReminders.filter { !$0.isCompleted })
+                return
+            }
+            completion([])
+        }
+     }
+    
+    func loadReminders() async -> [EKReminder] {
+        await withCheckedContinuation { continuation in
+            loadReminders { reminders in
+                continuation.resume(returning: reminders)
             }
         }
-        Thread.sleep(forTimeInterval: 0.08)
-        return reminders
-     }
+    }
     
     init() {
         eventStore = EKEventStore()
@@ -42,7 +49,7 @@ struct AsyncGetReminders {
     }
         
     func main() async throws {
-        let reminders = await loadReminders(predicate)
+        let reminders = await loadReminders()
         for reminder in reminders {
             print("\(reminder.title ?? "Unknown")")
         }
