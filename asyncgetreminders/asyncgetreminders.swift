@@ -20,25 +20,30 @@ struct AsyncGetReminders {
     
     /// Wrap old-style fetchReminders function (that takes a completion handler)
     /// with an async block that uses a continuation.
+    func fetchReminders(matching predicate: NSPredicate) async -> [EKReminder] {
+        return await withCheckedContinuation { continuation in
+            eventStore.fetchReminders(matching: predicate) { foundReminders in
+                continuation.resume(returning: foundReminders)
+            }
+        } ?? []
+    }
+    
     func fetchReminders() async -> [EKReminder] {
-        
         // need an EKCalendar and an NSPredicate to fetchReminders.
         guard let calendar = eventStore.defaultCalendarForNewReminders() else {
             print("# ERROR: Could not get default calendar for new reminders!")
-            return []
+            exit(EXIT_FAILURE)
         }
-        let predicate = eventStore.predicateForReminders(in: [calendar])
         
-        return await withCheckedContinuation { continuation in
-            eventStore.fetchReminders(matching: predicate) { foundReminders in
-                // This is our chance to filter/process the reminders before returning them.
-                // Note: foundReminders is optional, so handle nil case with "?? []"
-                let filteredReminders = (foundReminders ?? []).filter { !$0.isCompleted }
-                continuation.resume(returning: filteredReminders)
-            }
-            // Careful! Every path in this withCheckedContinuation block
-            // _must_ resume() the continuation or memory will leak.
-        }
+        // Get any reminders that are not completed
+        let incompleteRemindersPredicate = eventStore.predicateForIncompleteReminders(withDueDateStarting: nil, ending: nil, calendars: [calendar])
+        let incompleteReminders = await fetchReminders(matching: incompleteRemindersPredicate)
+        
+        // Also get reminders that were completed today
+        let completedTodayPredicate = eventStore.predicateForCompletedReminders(withCompletionDateStarting: Date.now, ending: nil, calendars: [calendar])
+        let completedTodayReminders = await fetchReminders(matching: completedTodayPredicate)
+
+        return incompleteReminders + completedTodayReminders
     }
     
     init() {
